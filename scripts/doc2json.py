@@ -31,13 +31,14 @@ def extract_class_type_parameters(html_doc):
     text = html_doc.find(class_="typeNameLabel").text.split("<", 1)
     if len(text) == 1:
         return []
-    text = text[1][:-1]
+    text = text[1][:-1].encode("ascii", "ignore").decode()
     return [p[0] for p in re.findall(regex, text)]
 
 
 def extract_super_class(html_doc):
     regex = re.compile(".*extends ([^ ]+).*")
-    text = html_doc.select(".description .blockList pre")[0].text
+    text = html_doc.select(".description .blockList pre")[0].text.encode(
+        "ascii", "ignore").decode()
     text = text.replace("\n", " ")
     match = re.match(regex, text)
     if match:
@@ -60,7 +61,8 @@ def extract_super_interfaces(html_doc):
     for doc in html_doc.select(".description .blockList dl"):
         if doc.find("dt").text != "All Superinterfaces:":
             continue
-        return list(doc.find("dd").text.split(", "))
+        return list(doc.find("dd").text.encode(
+            "ascii", "ignore").decode().split(", "))
     return []
 
 
@@ -69,8 +71,9 @@ def extract_method_return_type(method_doc, is_constructor):
         return [], None
 
     regex = re.compile(
-        r"(static )?(default )?(<(.*)>.?)?([a-zA-Z<>, \\.\\[\\]]+)")
-    text = method_doc.find(class_="colFirst").text
+        r"(static )?(default )?(<(.*)>)?(.+)")
+    text = method_doc.find(class_="colFirst").text.encode(
+        "ascii", "ignore").decode()
     match = re.match(regex, text)
     if not match:
         raise Exception("Cannot match method's signature {!r}".format(text))
