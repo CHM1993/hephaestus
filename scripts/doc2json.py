@@ -68,7 +68,8 @@ def extract_method_return_type(method_doc, is_constructor):
     if is_constructor:
         return [], None
 
-    regex = re.compile("(static )?(default )?(<(.*)> ?)?([a-zA-Z<>, ]+)")
+    regex = re.compile(
+        r"(static )?(default )?(<(.*)>.?)?([a-zA-Z<>, \\.\\[\\]]+)")
     text = method_doc.find(class_="colFirst").text
     match = re.match(regex, text)
     if not match:
@@ -217,7 +218,7 @@ def main():
     preprocess_args(args)
     for base in os.listdir(args.input):
         apidoc_path = os.path.join(args.input, base)
-        if not apidoc_path.endswith(".html"):
+        if not apidoc_path.endswith(".html") and 'Set.html' not in apidoc_path:
             continue
         data = process_javadoc(file2html(apidoc_path))
         dict2json(args.output, data)
