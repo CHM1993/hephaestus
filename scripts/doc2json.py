@@ -150,7 +150,7 @@ def file2html(path):
 def dict2json(outdir, data):
     path = os.path.join(outdir, data["name"]) + ".json"
     with open(path, 'w') as f:
-        json.dump(data, f)
+        json.dump(data, f, indent=2)
 
 
 def get_args():
