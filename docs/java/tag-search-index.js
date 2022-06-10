@@ -1,0 +1,1 @@
+tagSearchIndex = [{"l":"Java Collections Framework","h":"util","u":"java.base/java/util/package-summary.html#JavaCollectionsFramework"},{"l":"jrt","h":"java.base","d":"jrt","u":"java.base/module-summary.html#jrt"}]
