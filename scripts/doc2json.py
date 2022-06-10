@@ -69,8 +69,12 @@ def extract_method_parameter_types(method_doc, is_constructor):
 
 
 def extract_method_name(method_doc, is_constructor):
-    key = ".colConstructorName a" if is_constructor else ".colSecond a"
-    return method_doc.select(key)[0].text
+    try:
+        key = ".colConstructorName a" if is_constructor else ".colSecond a"
+        return method_doc.select(key)[0].text
+    except IndexError:
+        # We are probably in a field
+        return None
 
 
 def extract_isstatic(method_doc, is_constructor):
@@ -111,6 +115,8 @@ def process_javadoc(html_doc):
     for method_doc in methods:
         is_con = is_constructor(method_doc)
         method_name = extract_method_name(method_doc, is_con)
+        if method_name is None:
+            continue
         isstatic = extract_isstatic(method_doc, is_con)
         type_params, ret_type = extract_method_return_type(method_doc,
                                                            is_con)
@@ -182,7 +188,7 @@ def main():
     preprocess_args(args)
     for base in os.listdir(args.input):
         apidoc_path = os.path.join(args.input, base)
-        if not apidoc_path.endswith(".html") or base != "List.html":
+        if not apidoc_path.endswith(".html"):
             continue
         data = process_javadoc(file2html(apidoc_path))
         dict2json(args.output, data)
