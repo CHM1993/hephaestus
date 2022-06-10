@@ -12,7 +12,21 @@ def extract_package_name(html_doc):
 
 
 def extract_class_name(html_doc):
-    return html_doc.find(class_="typeNameLabel").text
+    regex = re.compile("([A-Za-z0-9]+).*")
+    text = html_doc.find(class_="typeNameLabel").text
+    match = re.match(regex, text)
+    if not match:
+        raise Exception("Cannot extract class name: {!r}".format(text))
+    return match.group(1)
+
+
+def extract_class_type_parameters(html_doc):
+    regex = re.compile("([A-Z]( extends [^ ]* )?)")
+    text = html_doc.find(class_="typeNameLabel").text.split("<", 1)
+    if len(text) == 1:
+        return []
+    text = text[1]
+    return re.findall(regex, text)
 
 
 def extract_super_class(html_doc):
@@ -25,7 +39,10 @@ def extract_super_class(html_doc):
     return None
 
 
-def extract_method_return_type(method_doc):
+def extract_method_return_type(method_doc, is_constructor):
+    if is_constructor:
+        return [], None
+
     regex = re.compile("(static )?(<([A-Z,]+)> )?([a-zA-Z<>]+)")
     text = method_doc.find(class_="colFirst").text
     match = re.match(regex, text)
@@ -39,19 +56,40 @@ def extract_method_return_type(method_doc):
     return type_parameters, return_type
 
 
-def extract_method_parameter_types(method_doc):
+def extract_method_parameter_types(method_doc, is_constructor):
+    key = ".colConstructorName code" if is_constructor else ".colSecond code"
     regex = re.compile("\\(?([^, ]+)[ ][a-zA-Z0-9_]+,? *\\)?")
-    text = method_doc.select(".colSecond code")[0].text.replace(
-        "\n", " ").replace("\xa0", " ").split("(", 1)[1]
+    try:
+        text = method_doc.select(key)[0].text.replace(
+            "\n", " ").replace("\xa0", " ").split("(", 1)[1]
+    except IndexError:
+        # We probably encounter a field
+        return None
     return re.findall(regex, text)
 
 
-def extract_method_name(method_doc):
-    return method_doc.select(".colSecond a")[0].text
+def extract_method_name(method_doc, is_constructor):
+    key = ".colConstructorName a" if is_constructor else ".colSecond a"
+    return method_doc.select(key)[0].text
 
 
-def extract_isstatic(method_doc):
+def extract_isstatic(method_doc, is_constructor):
+    if is_constructor:
+        return False
     return 'static' in method_doc.find(class_="colFirst").text
+
+
+def is_constructor(method_doc):
+    return method_doc.find(class_="colConstructorName") is not None
+
+
+def is_field(method_doc):
+    try:
+        text = method_doc.select(".colFirst a")[0].text
+        return re.match(r'[A-Z_]+', text) is not None
+    except IndexError:
+        # Probably, we are in a constructor
+        return False
 
 
 def process_javadoc(html_doc):
@@ -69,10 +107,17 @@ def process_javadoc(html_doc):
       'fields': [],
     }
     for method_doc in html_doc.find_all(class_="rowColor"):
-        method_name = extract_method_name(method_doc)
-        isstatic = extract_isstatic(method_doc)
-        type_params, ret_type = extract_method_return_type(method_doc)
-        param_types = extract_method_parameter_types(method_doc)
+        if is_field(method_doc):
+            continue
+        is_con = is_constructor(method_doc)
+        method_name = extract_method_name(method_doc, is_con)
+        isstatic = extract_isstatic(method_doc, is_con)
+        type_params, ret_type = extract_method_return_type(method_doc,
+                                                           is_con)
+        param_types = extract_method_parameter_types(method_doc,
+                                                     is_con)
+        if param_types is None:
+            continue
         method_obj = {
             "name": method_name,
             "parameters": param_types,
