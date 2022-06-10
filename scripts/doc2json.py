@@ -83,7 +83,7 @@ def extract_method_return_type(method_doc, is_constructor):
     if type_parameters:
         regex = re.compile(r"(?:[^,(]|<[^)]*>)+")
         type_parameters = re.findall(regex, type_parameters)
-    return type_parameters, return_type
+    return type_parameters or [], return_type
 
 
 def extract_method_parameter_types(method_doc, is_constructor):
