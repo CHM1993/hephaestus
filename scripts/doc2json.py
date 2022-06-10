@@ -26,7 +26,7 @@ def extract_class_type_parameters(html_doc):
     if len(text) == 1:
         return []
     text = text[1]
-    return re.findall(regex, text)
+    return [p[0] for p in re.findall(regex, text)]
 
 
 def extract_super_class(html_doc):
@@ -43,13 +43,13 @@ def extract_method_return_type(method_doc, is_constructor):
     if is_constructor:
         return [], None
 
-    regex = re.compile("(static )?(<([A-Z,]+)> )?([a-zA-Z<>]+)")
+    regex = re.compile("(static )?(default )?(<([A-Z,]+)> )?([a-zA-Z<>]+)")
     text = method_doc.find(class_="colFirst").text
     match = re.match(regex, text)
     if not match:
         raise Exception("Cannot match method's signature {!r}".format(text))
-    type_parameters = match.group(3)
-    return_type = match.group(4)
+    type_parameters = match.group(4)
+    return_type = match.group(5)
     assert return_type is not None
     if type_parameters:
         type_parameters = type_parameters.split(",")
@@ -58,7 +58,7 @@ def extract_method_return_type(method_doc, is_constructor):
 
 def extract_method_parameter_types(method_doc, is_constructor):
     key = ".colConstructorName code" if is_constructor else ".colSecond code"
-    regex = re.compile("\\(?([^, ]+)[ ][a-zA-Z0-9_]+,? *\\)?")
+    regex = re.compile("\\(?([^,]+)[ ][a-zA-Z0-9_]+,? *\\)?")
     try:
         text = method_doc.select(key)[0].text.replace(
             "\n", " ").replace("\xa0", " ").split("(", 1)[1]
@@ -86,7 +86,7 @@ def is_constructor(method_doc):
 def is_field(method_doc):
     try:
         text = method_doc.select(".colFirst a")[0].text
-        return re.match(r'[A-Z_]+', text) is not None
+        return all(c.isupper() for c in text.replace("_", ""))
     except IndexError:
         # Probably, we are in a constructor
         return False
@@ -101,14 +101,14 @@ def process_javadoc(html_doc):
     api = {
       'name': full_class_name,
       'methods': [],
-      'type_parameters': [],
+      'type_parameters': extract_class_type_parameters(html_doc),
       'implements': [],
       'inherits': super_class,
       'fields': [],
     }
-    for method_doc in html_doc.find_all(class_="rowColor"):
-        if is_field(method_doc):
-            continue
+    methods = html_doc.find_all(class_="rowColor") + html_doc.find_all(
+        class_="altColor")
+    for method_doc in methods:
         is_con = is_constructor(method_doc)
         method_name = extract_method_name(method_doc, is_con)
         isstatic = extract_isstatic(method_doc, is_con)
@@ -116,6 +116,7 @@ def process_javadoc(html_doc):
                                                            is_con)
         param_types = extract_method_parameter_types(method_doc,
                                                      is_con)
+
         if param_types is None:
             continue
         method_obj = {
@@ -181,7 +182,7 @@ def main():
     preprocess_args(args)
     for base in os.listdir(args.input):
         apidoc_path = os.path.join(args.input, base)
-        if not apidoc_path.endswith(".html"):
+        if not apidoc_path.endswith(".html") or base != "List.html":
             continue
         data = process_javadoc(file2html(apidoc_path))
         dict2json(args.output, data)
