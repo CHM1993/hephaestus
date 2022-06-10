@@ -7,6 +7,12 @@ import sys
 from bs4 import BeautifulSoup
 
 
+REGULAR_CLASS = 0
+INTERFACE = 1
+ABSTRACT_CLASS = 2
+ENUM = 3
+
+
 def extract_package_name(html_doc):
     return html_doc.find_all(class_="subTitle")[1].find_all(text=True)[2]
 
@@ -21,11 +27,11 @@ def extract_class_name(html_doc):
 
 
 def extract_class_type_parameters(html_doc):
-    regex = re.compile("([A-Z]( extends [^ ]* )?)")
+    regex = re.compile(r'(?:[^,(]|<[^)]*>)+')
     text = html_doc.find(class_="typeNameLabel").text.split("<", 1)
     if len(text) == 1:
         return []
-    text = text[1]
+    text = text[1][:-1]
     return [p[0] for p in re.findall(regex, text)]
 
 
@@ -39,11 +45,30 @@ def extract_super_class(html_doc):
     return None
 
 
+def extract_class_type(html_doc):
+    text = html_doc.select(".description pre")[0].text
+    if 'interface' in text:
+        return INTERFACE
+    if 'abstract class' in text:
+        return ABSTRACT_CLASS
+    if 'enum' in text:
+        return None
+    return REGULAR_CLASS
+
+
+def extract_super_interfaces(html_doc):
+    for doc in html_doc.select(".description .blockList dl"):
+        if doc.find("dt").text != "All Superinterfaces:":
+            continue
+        return list(doc.find("dd").text.split(", "))
+    return []
+
+
 def extract_method_return_type(method_doc, is_constructor):
     if is_constructor:
         return [], None
 
-    regex = re.compile("(static )?(default )?(<([A-Z,]+)> )?([a-zA-Z<>]+)")
+    regex = re.compile("(static )?(default )?(<(.*)> ?)?([a-zA-Z<>, ]+)")
     text = method_doc.find(class_="colFirst").text
     match = re.match(regex, text)
     if not match:
@@ -52,20 +77,22 @@ def extract_method_return_type(method_doc, is_constructor):
     return_type = match.group(5)
     assert return_type is not None
     if type_parameters:
-        type_parameters = type_parameters.split(",")
+        regex = re.compile(r"(?:[^,(]|<[^)]*>)+")
+        type_parameters = re.findall(regex, type_parameters)
     return type_parameters, return_type
 
 
 def extract_method_parameter_types(method_doc, is_constructor):
     key = ".colConstructorName code" if is_constructor else ".colSecond code"
-    regex = re.compile("\\(?([^,]+)[ ][a-zA-Z0-9_]+,? *\\)?")
+    regex = re.compile("\\(?([^ ,<>]+(<.*>)?)[ ]+[a-z0-9_]+,? *\\)?")
     try:
         text = method_doc.select(key)[0].text.replace(
-            "\n", " ").replace("\xa0", " ").split("(", 1)[1]
+            "\n", " ").replace("\xa0", " ").replace("\u200b", "").split(
+                "(", 1)[1]
     except IndexError:
         # We probably encounter a field
         return None
-    return re.findall(regex, text)
+    return [p[0] for p in re.findall(regex, text)]
 
 
 def extract_method_name(method_doc, is_constructor):
@@ -102,12 +129,15 @@ def process_javadoc(html_doc):
     full_class_name = "{pkg}.{cls}".format(pkg=package_name,
                                            cls=class_name)
     super_class = extract_super_class(html_doc)
+    super_interfaces = extract_super_interfaces(html_doc)
+    class_type = extract_class_type(html_doc)
     api = {
       'name': full_class_name,
-      'methods': [],
+      'methods': [],  # We populate this field below
       'type_parameters': extract_class_type_parameters(html_doc),
-      'implements': [],
+      'implements': super_interfaces,
       'inherits': super_class,
+      "class_type": class_type,
       'fields': [],
     }
     methods = html_doc.find_all(class_="rowColor") + html_doc.find_all(
@@ -115,8 +145,6 @@ def process_javadoc(html_doc):
     for method_doc in methods:
         is_con = is_constructor(method_doc)
         method_name = extract_method_name(method_doc, is_con)
-        if method_name is None:
-            continue
         isstatic = extract_isstatic(method_doc, is_con)
         type_params, ret_type = extract_method_return_type(method_doc,
                                                            is_con)
@@ -131,6 +159,7 @@ def process_javadoc(html_doc):
             "type_parameters": type_params,
             "return_type": ret_type,
             "is_static": isstatic,
+            "is_constructor": is_con,
             "access_mod": "public"
         }
         api["methods"].append(method_obj)
