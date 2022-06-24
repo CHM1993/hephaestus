@@ -18,7 +18,7 @@ def extract_package_name(html_doc):
 
 
 def extract_class_name(html_doc):
-    regex = re.compile("([A-Za-z0-9]+).*")
+    regex = re.compile("([A-Za-z0-9\\.]+).*")
     text = html_doc.find(class_="typeNameLabel").text
     match = re.match(regex, text)
     if not match:
@@ -221,7 +221,7 @@ def main():
     preprocess_args(args)
     for base in os.listdir(args.input):
         apidoc_path = os.path.join(args.input, base)
-        if not apidoc_path.endswith(".html") and 'Set.html' not in apidoc_path:
+        if not apidoc_path.endswith(".html"):
             continue
         data = process_javadoc(file2html(apidoc_path))
         dict2json(args.output, data)
