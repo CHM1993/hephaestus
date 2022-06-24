@@ -31,19 +31,19 @@ def extract_class_type_parameters(html_doc):
     text = html_doc.find(class_="typeNameLabel").text.split("<", 1)
     if len(text) == 1:
         return []
-    text = text[1][:-1].encode("ascii", "ignore").decode()
+    text = text[1][:-1].encode("ascii", "ignore").decode().replace(", ", ",")
     return [p[0] for p in re.findall(regex, text)]
 
 
 def extract_super_class(html_doc):
-    regex = re.compile(".*extends ([^ ]+).*")
     text = html_doc.select(".description .blockList pre")[0].text.encode(
         "ascii", "ignore").decode()
     text = text.replace("\n", " ")
-    match = re.match(regex, text)
-    if match:
-        return match.group(1)
-    return None
+    segs = text.split(" extends ")
+    if len(segs) == 1:
+        return None
+    super_class = segs[1].split(" implements ")[0]
+    return super_class
 
 
 def extract_class_type(html_doc):
@@ -58,12 +58,15 @@ def extract_class_type(html_doc):
 
 
 def extract_super_interfaces(html_doc):
-    for doc in html_doc.select(".description .blockList dl"):
-        if doc.find("dt").text != "All Superinterfaces:":
-            continue
-        return list(doc.find("dd").text.encode(
-            "ascii", "ignore").decode().split(", "))
-    return []
+    regex = re.compile(r'(?:[^,(]|<[^)]*>)+')
+    text = html_doc.select(".description .blockList pre")[0].text.encode(
+        "ascii", "ignore").decode()
+    text = text.replace("\n", " ")
+    segs = text.split(" implements ")
+    if len(segs) == 1:
+        return []
+    text = segs[1].replace(", ", ",")
+    return [p for p in re.findall(regex, text)]
 
 
 def extract_method_return_type(method_doc, is_constructor):
