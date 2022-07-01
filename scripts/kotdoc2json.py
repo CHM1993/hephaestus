@@ -19,87 +19,71 @@ def extract_package_name(html_doc):
 
 def extract_class_name(html_doc):
     regex = re.compile("([A-Za-z0-9]+).*")
-    text = html_doc.select("div .cover span span")[0].text
-    match = re.match(regex, text)
-    if not match:
-        raise Exception("Cannot extract class name: {!r}".format(text))
-    return match.group(1)
+    CLA = html_doc.select(".cover a")[0].text
+#    import pdb
+#    pdb.set_trace()
+    return CLA
 
 
 def extract_class_type_parameters(html_doc):
-    regex = re.compile(r'(?:[^,(]|<[^)]*>)+')
-    text = html_doc.find(class_="token operator").text.split("<", 1)
-    if len(text) == 1:
-        return []
-    text = text[1][:-1].encode("ascii", "ignore").decode()
-    return [p[0] for p in re.findall(regex, text)]
+#den xerw pws ginete na ta parw ola
+    typ_param = []
+    typ_param = html_doc.select(".cover a")[1].text
+#    import pdb
+#    pdb.set_trace()
+    return typ_param
 
 
 def extract_super_class(html_doc):
-#den xerw pws na tous parw
-    supclass = html_doc.find_all(class_="Inheritors")
-    if supclass:
-        return html_doc.select(".See_also div span")[-1].text
-    return None
+    regex = re.compile("([A-Za-z0-9]+).*")
+    superr = html_doc.select(".cover a")[3].text
+#    import pdb
+#    pdb.set_trace()
+    return superr
 
 
 def extract_class_type(html_doc):
-    text = html_doc.select(".cover div div div span")[0].text
-    if 'interface' in text:
+    cl_type = html_doc.select(".cover span")[3].text
+#    import pdb
+#    pdb.set_trace()
+    if 'interface' in cl_type:
         return INTERFACE
-    if 'abstract class' in text:
+    if 'abstract class' in cl_type:
         return ABSTRACT_CLASS
-    if 'enum' in text:
+    if 'enum' in cl_type:
         return None
     return REGULAR_CLASS
 
 
-def extract_super_interfaces(html_doc):
-    for doc in html_doc.select(".description .blockList dl"):
-        if doc.find("dt").text != "All Superinterfaces:":
-            continue
-        return list(doc.find("dd").text.encode(
-            "ascii", "ignore").decode().split(", "))
-    return []
+def extract_super_interfaces(interfs):
+#den xerw na kanw to for na ta pairnei ola
+    interfacess = []
+    interfacess = interfs.select("a")[1].text
+#    for infl in interfs.select(".flex"):
+#       interfacess.append(infl.select("a")[0].text)
+    import pdb
+    pdb.set_trace()
+    return interfacess 
 
 
 def extract_method_return_type(method_doc, is_constructor):
     if is_constructor:
         return [], None
-
-    regex = re.compile(
-        r"(static )?(default )?(<(.*)>)?(.+)")
-    text = method_doc.select(".title div span")[0].text.encode(
-        "ascii", "ignore").decode()
-    match = re.match(regex, text)
-    if not match:
-        raise Exception("Cannot match method's signature {!r}".format(text))
-    type_parameters = match.group(4)
-    return_type = match.group(5)
-    assert return_type is not None
-    if type_parameters:
-        regex = re.compile(r"(?:[^,(]|<[^)]*>)+")
-        type_parameters = re.findall(regex, type_parameters)
-    return type_parameters or [], return_type
+    return [], method_doc.select("a")[-1].text
 
 
 def extract_method_parameter_types(method_doc, is_constructor):
-    regex = re.compile("\\(?([^ ,<>]+(<.*>)?)[ ]+[a-z0-9_]+,? *\\)?")
-    try:
-        text = method_doc.select(".inline_flex")[0].text
-    except IndexError:
-        # We probably encounter a field
-        return None
-    return [p[0] for p in re.findall(regex, text)]
+    types = []
+    for param in method_doc.select(".parameter"):
+       types.append(param.select("a")[-1].text)
+    return types
 
 
 
 def extract_method_name(method_doc, is_constructor):
 #giati den douleuei den xerw
     try:
-        key = method_doc.select(".title div span")[2].text
-#        key = ".title div span .token_function"
-        return key
+        return method_doc.find(class_="function").text
     except IndexError:
         # We are probably in a field
         return None
@@ -130,7 +114,9 @@ def process_javadoc(html_doc):
     full_class_name = "{pkg}.{cls}".format(pkg=package_name,
                                            cls=class_name)
     super_class = extract_super_class(html_doc)
-    super_interfaces = extract_super_interfaces(html_doc)
+    interf = html_doc.select("div[data-togglable=\"Inheritors\"]")
+    for interfs in interf:
+    	super_interfaces = extract_super_interfaces(interfs)
     class_type = extract_class_type(html_doc)
     api = {
       'name': full_class_name,
@@ -141,7 +127,7 @@ def process_javadoc(html_doc):
       "class_type": class_type,
       'fields': [],
     }
-    methods = html_doc.find_all(class_="tabbedcontent")
+    methods = html_doc.select("div[data-togglable=\"Functions\"] .title")
     for method_doc in methods:
         is_con = is_constructor(method_doc)
         method_name = extract_method_name(method_doc, is_con)
@@ -158,7 +144,7 @@ def process_javadoc(html_doc):
             "parameters": param_types,
             "type_parameters": type_params,
             "return_type": ret_type,
-#            "is_static": isstatic,
+            "is_static": False,
             "is_constructor": is_con,
             "access_mod": "public"
         }
