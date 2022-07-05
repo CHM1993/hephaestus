@@ -61,8 +61,8 @@ def extract_super_interfaces(interfs):
     interfacess = interfs.select("a")[1].text
 #    for infl in interfs.select(".flex"):
 #       interfacess.append(infl.select("a")[0].text)
-    import pdb
-    pdb.set_trace()
+#    import pdb
+#    pdb.set_trace()
     return interfacess 
 
 
@@ -81,7 +81,6 @@ def extract_method_parameter_types(method_doc, is_constructor):
 
 
 def extract_method_name(method_doc, is_constructor):
-#giati den douleuei den xerw
     try:
         return method_doc.find(class_="function").text
     except IndexError:
@@ -98,14 +97,14 @@ def extract_method_name(method_doc, is_constructor):
 def is_constructor(method_doc):
     return method_doc.find(class_="colConstructorName") is not None
 
-#den to vriskw
-def is_field(method_doc):
-    try:
-        text = method_doc.select(".token_keyword")[0].text
-        return all(c.isupper() for c in text.replace("_", ""))
-    except IndexError:
-        # Probably, we are in a constructor
-        return False
+#Classes in Kotlin cannot have fields
+#def is_field(method_doc):
+#    try:
+#        text = method_doc.select(".token_keyword")[0].text
+#        return all(c.isupper() for c in text.replace("_", ""))
+#    except IndexError:
+#        # Probably, we are in a constructor
+#        return False
 
 
 def process_javadoc(html_doc):
@@ -125,7 +124,7 @@ def process_javadoc(html_doc):
       'implements': super_interfaces,
       'inherits': super_class,
       "class_type": class_type,
-      'fields': [],
+      'fields': False,
     }
     methods = html_doc.select("div[data-togglable=\"Functions\"] .title")
     for method_doc in methods:
