@@ -12,10 +12,11 @@ REGULAR_CLASS = 0
 INTERFACE = 1
 ABSTRACT_CLASS = 2
 ENUM = 3
+EXCLUDE_NAME = "<no name provided>"
 
 
 def _get_super_classes_interfaces(html_doc):
-    regex = re.compile(r'(?:[^,(]|<[^)]*>)+')
+    regex = re.compile(r'(?:[^,<]|<[^>]*>)+')
     element = html_doc.select(".cover .platform-hinted .symbol")[0]
     # remove these elements
     rem_elems = element.find_all("span", {"class": "top-right-position"}) + \
@@ -26,7 +27,8 @@ def _get_super_classes_interfaces(html_doc):
     if len(segs) == 1:
         # No super classes / interfaces.
         return []
-    text = element.text.split(": ")[1].replace(" , ", ",")
+    text = element.text.split(": ")[1].replace(" , ", ",").replace(
+        ", ", ",").strip(" ")
     return re.findall(regex, text)
 
 
@@ -39,8 +41,20 @@ def extract_class_name(html_doc):
 
 
 def extract_class_type_parameters(html_doc):
-    typ_param = html_doc.select(".cover a")[1].text
-    return typ_param
+    element = html_doc.select(".cover .platform-hinted .symbol")[0]
+    # remove these elements
+    rem_elems = element.find_all("span", {"class": "top-right-position"}) + \
+        element.find_all("div", {"class": "copy-popup-wrapper"})
+    for e in rem_elems:
+        e.decompose()
+    segs = element.text.split(": ")
+    cls_text = segs[0]
+    segs = cls_text.split("<")
+    if len(segs) == 1:
+        return []
+    regex = re.compile(r'(?:[^,<]|<[^>]*>)+')
+    text = segs[1][:-2].replace(", ", ",")
+    return re.findall(regex, text)
 
 
 def extract_super_class(html_doc):
@@ -67,22 +81,38 @@ def extract_super_interfaces(html_doc):
     return classes
 
 
+def extract_method_type_parameters(method_doc, is_constructor):
+    if is_constructor:
+        return []
+    regex = re.compile(
+        r".* fun <(.*)> .+\(.*\).*")
+    match = re.match(regex, method_doc.text)
+    if not match:
+        return []
+    type_parameters = match.group(1)
+    if type_parameters:
+        regex = re.compile(r"(?:[^,<]|<[^>]*>)+")
+        type_parameters = re.findall(regex, type_parameters)
+    return type_parameters
+
+
 def extract_method_return_type(method_doc, is_constructor):
     if is_constructor:
-        return [], None
-    elem = method_doc.find("span", {"class": "token function"})
+        return None
+    elem = method_doc.find("span", {"class": "top-right-position"})
     elem.decompose()
-    ret_type = method_doc.select("a")[-1].text
-    if not ret_type:
-        return [], "Unit"
-
-    return [], ret_type
+    segs = method_doc.text.split("): ")
+    if len(segs) == 1:
+        return "Unit"
+    return segs[1]
 
 
 def extract_method_parameter_types(method_doc, is_constructor):
     types = []
     for param in method_doc.select(".parameter"):
-        types.append(param.select("a")[-1].text)
+        segs = param.text.strip(", ").split(": ", 1)
+        assert len(segs) == 2
+        types.append(segs[1])
     return types
 
 
@@ -116,8 +146,10 @@ def process_javadoc(html_doc):
     for method_doc in methods:
         is_con = False
         method_name = extract_method_name(method_doc, is_con)
-        type_params, ret_type = extract_method_return_type(method_doc,
-                                                           is_con)
+        if method_name == EXCLUDE_NAME:
+            continue
+        ret_type = extract_method_return_type(method_doc, is_con)
+        type_params = extract_method_type_parameters(method_doc, is_con)
         param_types = extract_method_parameter_types(method_doc, is_con)
         if param_types is None:
             continue
@@ -188,5 +220,8 @@ def main():
         dict2json(args.output, data)
 
 
+# TODO add constructors
+# TODO add fields
+# TODO add top-level and extension functions
 if __name__ == '__main__':
     main()

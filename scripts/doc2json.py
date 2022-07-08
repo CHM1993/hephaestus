@@ -27,11 +27,11 @@ def extract_class_name(html_doc):
 
 
 def extract_class_type_parameters(html_doc):
-    regex = re.compile(r'(?:[^,(]|<[^)]*>)+')
+    regex = re.compile(r'(?:[^,<]|<[^>]*>)+')
     text = html_doc.find(class_="typeNameLabel").text.split("<", 1)
     if len(text) == 1:
         return []
-    text = text[1][:-1].encode("ascii", "ignore").decode().replace(", ", ",")
+    text = text[1][:-1].encode("ascii", "ignore").decode().replace(" , ", ",")
     return [p[0] for p in re.findall(regex, text)]
 
 
@@ -58,7 +58,7 @@ def extract_class_type(html_doc):
 
 
 def extract_super_interfaces(html_doc):
-    regex = re.compile(r'(?:[^,(]|<[^)]*>)+')
+    regex = re.compile(r'(?:[^,<]|<[^>]*>)+')
     text = html_doc.select(".description .blockList pre")[0].text.encode(
         "ascii", "ignore").decode()
     text = text.replace("\n", " ")
@@ -84,7 +84,7 @@ def extract_method_return_type(method_doc, is_constructor):
     return_type = match.group(5)
     assert return_type is not None
     if type_parameters:
-        regex = re.compile(r"(?:[^,(]|<[^)]*>)+")
+        regex = re.compile(r"(?:[^,<]|<[^>]*>)+")
         type_parameters = re.findall(regex, type_parameters)
     return type_parameters or [], return_type
 
