@@ -69,24 +69,37 @@ def extract_super_interfaces(html_doc):
     return [p for p in re.findall(regex, text)]
 
 
-def extract_method_return_type(method_doc, is_constructor):
+def extract_method_type_parameters(method_doc, is_constructor):
     if is_constructor:
-        return [], None
-
+        return []
     regex = re.compile(
-        r"(static )?(default )?(<(.*)>)?(.+)")
+        r"(static )?(default )?(<(.*)>)?.+")
     text = method_doc.find(class_="colFirst").text.encode(
         "ascii", "ignore").decode()
     match = re.match(regex, text)
     if not match:
         raise Exception("Cannot match method's signature {!r}".format(text))
     type_parameters = match.group(4)
-    return_type = match.group(5)
-    assert return_type is not None
     if type_parameters:
         regex = re.compile(r"(?:[^,<]|<[^>]*>)+")
         type_parameters = re.findall(regex, type_parameters)
-    return type_parameters or [], return_type
+    return type_parameters or []
+
+
+def extract_method_return_type(method_doc, is_constructor):
+    if is_constructor:
+        return None
+
+    regex = re.compile(
+        r"(static )?(default )?(<.*>)?(.+)")
+    text = method_doc.find(class_="colFirst").text.encode(
+        "ascii", "ignore").decode()
+    match = re.match(regex, text)
+    if not match:
+        raise Exception("Cannot match method's signature {!r}".format(text))
+    return_type = match.group(4)
+    assert return_type is not None
+    return return_type
 
 
 def extract_method_parameter_types(method_doc, is_constructor):
@@ -130,33 +143,14 @@ def is_field(method_doc):
         return False
 
 
-def process_javadoc(html_doc):
-    class_name = extract_class_name(html_doc)
-    package_name = extract_package_name(html_doc)
-    full_class_name = "{pkg}.{cls}".format(pkg=package_name,
-                                           cls=class_name)
-    super_class = extract_super_class(html_doc)
-    super_interfaces = extract_super_interfaces(html_doc)
-    class_type = extract_class_type(html_doc)
-    api = {
-      'name': full_class_name,
-      'methods': [],  # We populate this field below
-      'type_parameters': extract_class_type_parameters(html_doc),
-      'implements': super_interfaces,
-      'inherits': super_class,
-      "class_type": class_type,
-      'fields': [],
-    }
-    methods = html_doc.find_all(class_="rowColor") + html_doc.find_all(
-        class_="altColor")
+def process_methods(methods, is_con):
+    method_objs = []
     for method_doc in methods:
-        is_con = is_constructor(method_doc)
         method_name = extract_method_name(method_doc, is_con)
         isstatic = extract_isstatic(method_doc, is_con)
-        type_params, ret_type = extract_method_return_type(method_doc,
-                                                           is_con)
-        param_types = extract_method_parameter_types(method_doc,
-                                                     is_con)
+        ret_type = extract_method_return_type(method_doc, is_con)
+        type_params = extract_method_type_parameters(method_doc, is_con)
+        param_types = extract_method_parameter_types(method_doc, is_con)
 
         if param_types is None:
             continue
@@ -167,11 +161,41 @@ def process_javadoc(html_doc):
             "return_type": ret_type,
             "is_static": isstatic,
             "is_constructor": is_con,
-            "access_mod": "public"
+            "access_mod": "public",
         }
-        api["methods"].append(method_obj)
+        method_objs.append(method_obj)
+    return method_objs
 
-    return api
+
+def process_class(html_doc):
+    class_name = extract_class_name(html_doc)
+    package_name = extract_package_name(html_doc)
+    full_class_name = "{pkg}.{cls}".format(pkg=package_name,
+                                           cls=class_name)
+    super_class = extract_super_class(html_doc)
+    super_interfaces = extract_super_interfaces(html_doc)
+    class_type = extract_class_type(html_doc)
+    methods = html_doc.find_all(class_="rowColor") + html_doc.find_all(
+        class_="altColor")
+    methods_ = []
+    constructors = []
+    for m in methods:
+        if is_constructor(m):
+            constructors.append(m)
+        else:
+            methods_.append(m)
+    method_objs = process_methods(methods_, False)
+    constructor_objs = process_methods(constructors, True)
+    class_obj = {
+      'name': full_class_name,
+      'type_parameters': extract_class_type_parameters(html_doc),
+      'implements': super_interfaces,
+      'inherits': super_class,
+      "class_type": class_type,
+      'methods': method_objs + constructor_objs,
+      'fields': [],
+    }
+    return class_obj
 
 
 def preprocess_args(args):
@@ -226,7 +250,7 @@ def main():
         apidoc_path = os.path.join(args.input, base)
         if not apidoc_path.endswith(".html"):
             continue
-        data = process_javadoc(file2html(apidoc_path))
+        data = process_class(file2html(apidoc_path))
         dict2json(args.output, data)
 
 
