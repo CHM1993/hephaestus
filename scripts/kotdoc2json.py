@@ -32,8 +32,9 @@ def _get_super_classes_interfaces(html_doc):
     return re.findall(regex, text)
 
 
-def extract_package_name(html_doc):
-    return html_doc.select(".breadcrumbs a")[-2].text
+def extract_package_name(html_doc, top_level=False):
+    index = -1 if top_level else -2
+    return html_doc.select(".breadcrumbs a")[index].text
 
 
 def extract_class_name(html_doc):
@@ -251,7 +252,7 @@ def process_class(html_doc):
 
 
 def process_toplevel(html_doc):
-    package_name = extract_package_name(html_doc)
+    package_name = extract_package_name(html_doc, True)
     methods = html_doc.select(
         "div[data-togglable=\"Functions\"] .title .symbol")
     fields = html_doc.select(
