@@ -124,33 +124,58 @@ def extract_method_name(method_doc, is_constructor):
         return None
 
 
-def process_javadoc(html_doc):
-    class_name = extract_class_name(html_doc)
-    package_name = extract_package_name(html_doc)
-    full_class_name = "{pkg}.{cls}".format(pkg=package_name,
-                                           cls=class_name)
-    super_class = extract_super_class(html_doc)
-    super_interfaces = extract_super_interfaces(html_doc)
-    class_type = extract_class_type(html_doc)
-    api = {
-      'name': full_class_name,
-      'methods': [],  # We populate this field below
-      'type_parameters': extract_class_type_parameters(html_doc),
-      'implements': super_interfaces,
-      'inherits': super_class,
-      "class_type": class_type,
-      'fields': False,
-    }
-    methods = html_doc.select(
-        "div[data-togglable=\"Functions\"] .title .symbol")
+def extract_field_name(field_doc):
+    field_doc.find("span", {"class": "top-right-position"}).decompose()
+    regex = re.compile(".*va[lr] (.+): .*")
+    match = re.match(regex, field_doc.text)
+    assert match is not None
+    return match.group(1)
+
+
+def extract_field_type(field_doc):
+    return field_doc.text.split(": ")[1]
+
+
+def is_field_final(field_doc):
+    keywords = [
+        e.text.strip(" ")
+        for e in field_doc.find_all("span", {"class": "token keyword"})
+    ]
+    return "val" in keywords
+
+
+def is_field_override(field_doc):
+    keywords = [
+        e.text.strip(" ")
+        for e in field_doc.find_all("span", {"class": "token keyword"})
+    ]
+    return "override" in keywords
+
+
+def process_fields(fields):
+    field_objs = []
+    for field_doc in fields:
+        field_obj = {
+            "name": extract_field_name(field_doc),
+            "type": extract_field_type(field_doc),
+            "is_final": is_field_final(field_doc),
+            "is_override": is_field_override(field_doc),
+        }
+        field_objs.append(field_obj)
+    return field_objs
+
+
+def process_methods(methods, is_constructor):
+    method_objs = []
     for method_doc in methods:
-        is_con = False
-        method_name = extract_method_name(method_doc, is_con)
+        method_name = extract_method_name(method_doc, is_constructor)
         if method_name == EXCLUDE_NAME:
             continue
-        ret_type = extract_method_return_type(method_doc, is_con)
-        type_params = extract_method_type_parameters(method_doc, is_con)
-        param_types = extract_method_parameter_types(method_doc, is_con)
+        ret_type = extract_method_return_type(method_doc, is_constructor)
+        type_params = extract_method_type_parameters(
+            method_doc, is_constructor)
+        param_types = extract_method_parameter_types(
+            method_doc, is_constructor)
         if param_types is None:
             continue
         method_obj = {
@@ -159,10 +184,38 @@ def process_javadoc(html_doc):
             "type_parameters": type_params,
             "return_type": ret_type,
             "is_static": False,
-            "is_constructor": is_con,
+            "is_constructor": is_constructor,
             "access_mod": "public"
         }
-        api["methods"].append(method_obj)
+        method_objs.append(method_obj)
+    return method_objs
+
+
+def process_javadoc(html_doc):
+    class_name = extract_class_name(html_doc)
+    package_name = extract_package_name(html_doc)
+    full_class_name = "{pkg}.{cls}".format(pkg=package_name,
+                                           cls=class_name)
+    super_class = extract_super_class(html_doc)
+    super_interfaces = extract_super_interfaces(html_doc)
+    class_type = extract_class_type(html_doc)
+    methods = html_doc.select(
+        "div[data-togglable=\"Functions\"] .title .symbol")
+    constructors = html_doc.select(
+        "div[data-togglable=\"Constructors\"] .title .symbol")
+    fields = html_doc.select(
+        "div[data-togglable=\"Properties\"] .title .symbol")
+    method_objs = process_methods(methods, False)
+    constructor_objs = process_methods(constructors, True)
+    api = {
+        'name': full_class_name,
+        'type_parameters': extract_class_type_parameters(html_doc),
+        'implements': super_interfaces,
+        'inherits': super_class,
+        "class_type": class_type,
+        "methods": method_objs + constructor_objs,
+        'fields': process_fields(fields),
+    }
     return api
 
 
