@@ -33,8 +33,10 @@ def _get_super_classes_interfaces(html_doc):
 
 
 def extract_package_name(html_doc, top_level=False):
-    index = -1 if top_level else -2
-    return html_doc.select(".breadcrumbs a")[index].text
+    packages = html_doc.select(".breadcrumbs a")[1:]
+    if not top_level:
+        packages = packages[:-1]
+    return ".".join([p.text for p in packages])
 
 
 def extract_class_name(html_doc):
