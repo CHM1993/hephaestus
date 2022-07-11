@@ -81,15 +81,24 @@ def extract_super_interfaces(html_doc):
     return classes
 
 
+def extract_method_receiver(method_doc):
+    regex = re.compile(
+        r".*fun (<.*> )?(.*)\..+\(.*\).*")
+    match = re.match(regex, method_doc.text)
+    if not match:
+        return None
+    return match.group(2)
+
+
 def extract_method_type_parameters(method_doc, is_constructor):
     if is_constructor:
         return []
     regex = re.compile(
-        r".* fun <(.*)> .+\(.*\).*")
+        r".*fun <(.*)> .+\(.*\).*")
     match = re.match(regex, method_doc.text)
     if not match:
         return []
-    type_parameters = match.group(1)
+    type_parameters = match.group(1).replace(", ", ",")
     if type_parameters:
         regex = re.compile(r"(?:[^,<]|<[^>]*>)+")
         type_parameters = re.findall(regex, type_parameters)
@@ -126,10 +135,10 @@ def extract_method_name(method_doc, is_constructor):
 
 def extract_field_name(field_doc):
     field_doc.find("span", {"class": "top-right-position"}).decompose()
-    regex = re.compile(".*va[lr] (.+): .*")
+    regex = re.compile(".*va[lr] ([^\\.]+\\.)?([^ <>\\.]+): .*")
     match = re.match(regex, field_doc.text)
     assert match is not None
-    return match.group(1)
+    return match.group(2)
 
 
 def extract_field_type(field_doc):
@@ -152,6 +161,24 @@ def is_field_override(field_doc):
     return "override" in keywords
 
 
+def extract_field_type_parameters(field_doc):
+    regex = re.compile(".*va[lr] <(.+)> .+: .*")
+    match = re.match(regex, field_doc.text)
+    if not match:
+        return []
+    type_parameters = match.group(1).replace(", ", ",")
+    regex = re.compile(r'(?:[^,<]|<[^>]*>)+')
+    return re.findall(regex, type_parameters)
+
+
+def extract_field_receiver(field_doc):
+    regex = re.compile(".*va[lr] (<.+> )?([^\\.]+)\\.[^ <>\\.]+: .*")
+    match = re.match(regex, field_doc.text)
+    if not match:
+        return None
+    return match.group(2)
+
+
 def process_fields(fields):
     field_objs = []
     for field_doc in fields:
@@ -160,6 +187,8 @@ def process_fields(fields):
             "type": extract_field_type(field_doc),
             "is_final": is_field_final(field_doc),
             "is_override": is_field_override(field_doc),
+            "receiver": extract_field_receiver(field_doc),
+            "type_parameters": extract_field_type_parameters(field_doc),
         }
         field_objs.append(field_obj)
     return field_objs
@@ -183,6 +212,7 @@ def process_methods(methods, is_constructor):
             "parameters": param_types,
             "type_parameters": type_params,
             "return_type": ret_type,
+            "receiver": extract_method_receiver(method_doc),
             "is_static": False,
             "is_constructor": is_constructor,
             "access_mod": "public"
@@ -191,7 +221,7 @@ def process_methods(methods, is_constructor):
     return method_objs
 
 
-def process_javadoc(html_doc):
+def process_class(html_doc):
     class_name = extract_class_name(html_doc)
     package_name = extract_package_name(html_doc)
     full_class_name = "{pkg}.{cls}".format(pkg=package_name,
@@ -207,7 +237,7 @@ def process_javadoc(html_doc):
         "div[data-togglable=\"Properties\"] .title .symbol")
     method_objs = process_methods(methods, False)
     constructor_objs = process_methods(constructors, True)
-    api = {
+    class_obj = {
         'name': full_class_name,
         'type_parameters': extract_class_type_parameters(html_doc),
         'implements': super_interfaces,
@@ -215,6 +245,23 @@ def process_javadoc(html_doc):
         "class_type": class_type,
         "methods": method_objs + constructor_objs,
         'fields': process_fields(fields),
+        "is_class": True,
+    }
+    return class_obj
+
+
+def process_toplevel(html_doc):
+    package_name = extract_package_name(html_doc)
+    methods = html_doc.select(
+        "div[data-togglable=\"Functions\"] .title .symbol")
+    fields = html_doc.select(
+        "div[data-togglable=\"Properties\"] .title .symbol")
+    method_objs = process_methods(methods, False)
+    api = {
+        "name": package_name,
+        "methods": method_objs,
+        "fields": process_fields(fields),
+        "is_class": False,
     }
     return api
 
@@ -267,14 +314,14 @@ def get_args():
 def main():
     args = get_args()
     preprocess_args(args)
+    toplevel_path = Path(args.input).joinpath("index.html")
+    data = process_toplevel(file2html(toplevel_path))
+    dict2json(args.output, data)
     for path in Path(args.input).rglob('*/index.html'):
         apidoc_path = str(path)
-        data = process_javadoc(file2html(apidoc_path))
+        data = process_class(file2html(apidoc_path))
         dict2json(args.output, data)
 
 
-# TODO add constructors
-# TODO add fields
-# TODO add top-level and extension functions
 if __name__ == '__main__':
     main()
